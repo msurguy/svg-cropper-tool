@@ -8,7 +8,9 @@
     "lint": "vue-cli-service lint"
   },
   "dependencies": {
+    "clipper-lib": "^6.2.1",
     "core-js": "^2.6.5",
+    "flatten-svg": "^0.1.2",
     "vue": "^2.6.10"
   },
   "devDependencies": {
