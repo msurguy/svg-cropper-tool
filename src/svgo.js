@@ -269,7 +269,7 @@ function* multipassCompress(settings) {
       indent: '  ',
       pretty: settings.pretty
     }).data;
-    console.log(svgData)
+
     yield {
       data: svgData,
       dimensions: getDimensions(svg)
