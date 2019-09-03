@@ -20,13 +20,18 @@
                         </div>
                     </div>
 
+                  <div v-if="source.svg">
                     <toggle label="Closed Path" v-model="source.closedPath"></toggle>
+
                     <p class="mt-3 lead text-center text-white"> Cropper </p>
                     <select-field label="Cropper type" v-model="cropper.type"
                                   :options="cropper.options"></select-field>
 
-                    <toggle label="Closed Path" v-model="cropper.closedPath"></toggle>
-                  <textarea name="optimized" id="optimized" cols="30" rows="10" v-model="source.optimized.text"></textarea>
+                    <toggle v-if="cropper.type === 'file' || cropper.type === 'custom'" label="Closed Path" v-model="cropper.closedPath"></toggle>
+                    <button @click="crop" class="btn btn-block btn-secondary">Crop</button>
+
+                  </div>
+
                 </div>
             </div>
 
@@ -41,7 +46,16 @@
         <!-- Page Content -->
         <div class="paper">
             <div class="sketch">
-                <img :src="source.svg" alt="">
+                <div ref="cropper" id="cropper"></div>
+                <Moveable
+                        class="moveable"
+                        v-bind="moveable"
+                        @drag="handleDrag"
+                        @resize="handleResize"
+                        @rotate="handleRotate"
+                >
+                </Moveable>
+                <img v-if="source.svg" :src="source.svg" alt="Source SVG File Preview">
             </div>
         </div>
         <div class="footer-wrapper">
@@ -63,18 +77,37 @@
   import Toggle from "@/components/Toggle";
   import SelectField from "@/components/SelectField";
   import actions from '@/svgo'
+  import * as SVG from 'svg.js'
+  import Moveable from 'vue-moveable';
 
   export default {
     name: 'App',
     components: {
       Toggle,
-      SelectField
+      SelectField,
+      Moveable
     },
     mounted() {
       bsCustomFileInput.init()
+      const cropperEl = document.getElementById('cropper')
+      this.cropper.svg.element = SVG(cropperEl)
+      // draw.rect(100, 100).move(100, 50).fill('#f06')
+      // let draw = SVG(canvas).size(150, 200)
     },
     data() {
       return {
+        moveable: {
+          draggable: true,
+          throttleDrag: 0,
+          resizable: true,
+          throttleResize: 1,
+          keepRatio: false,
+          scalable: false,
+          throttleScale: 0,
+          rotatable: true,
+          throttleRotate: 0,
+          pinchable: false // ["draggable", "resizable", "scalable", "rotatable"]
+        },
         source: {
           svg: null,
           optimized: {
@@ -86,7 +119,10 @@
           position: [0, 0]
         },
         cropper: {
-          position: [0, 0],
+          x: 0,
+          y: 0,
+          width: 200,
+          height: 200,
           closedPath: false,
           type: 'square',
           options: [
@@ -95,7 +131,7 @@
             {text: 'Circle', value: 'circle'},
             {text: 'Polygon', value: 'polygon'},
             {text: 'Custom Shape', value: 'custom'},
-            {text: 'SVG', value: 'svg'}
+            {text: 'SVG File', value: 'file'}
           ],
           square: {
             size: [200, 200],
@@ -114,12 +150,19 @@
             points: []
           },
           svg: {
-            file: null
+            element: null,
+            text: '',
+            file: null,
+            width: 0,
+            height: 0
           }
         },
         cropperOptions: {
           square: [0, 0],
           circle: [0, 3, 4, 5]
+        },
+        result: {
+          svg: ''
         }
       }
     },
@@ -128,6 +171,10 @@
         eventBus.$emit('download')
       },
       onFileChange(e) {
+        // this.cropper.svg.width =
+        this.source.optimized = {}
+        this.source.svg = null
+
         let files = e.target.files || e.dataTransfer.files;
         if (!files.length)
           return;
@@ -137,6 +184,9 @@
         await actions.load({data: svg})
         let fileResult = await actions.process()
         const iterationCallback = async function () {}
+
+        this.cropper.svg.width = fileResult.dimensions.width
+        this.cropper.svg.height= fileResult.dimensions.height
 
         let resultFile = {
           text: fileResult.data,
@@ -150,17 +200,41 @@
         }
         return resultFile;
       },
+      stringToImage (string) {
+        return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(string)
+      },
       createImage(file) {
         const reader = new FileReader();
-        const vm = this;
-
         reader.onload = async (e) => {
-          vm.source.svg = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(e.target.result)
           this.source.optimized = await this.multipass(e.target.result)
-          //console.log(this.multipass(e.target.result))
+          this.source.svg = this.stringToImage(this.source.optimized.text)
+          this.cropper.svg.element.clear().size(this.source.optimized.width, this.source.optimized.height)
         };
         reader.readAsText(file);
       },
+      crop () {
+
+      },
+      handleDrag({target, left, top }) {
+        console.log('onDrag left, top', left, top)
+        target.style.left = `${left}px`;
+        target.style.top = `${top}px`;
+        this.cropper.x = left;
+        this.cropper.y = top;
+      },
+      handleResize({
+                     target, width, height, delta,
+                   }) {
+        console.log('onResize', width, height);
+        delta[0] && (target.style.width = `${width}px`);
+        delta[1] && (target.style.height = `${height}px`);
+        this.cropper.width = width;
+        this.cropper.height = height;
+      },
+      handleRotate({ target, dist, transform}) {
+        console.log('onRotate', dist);
+        target.style.transform = transform;
+      }
     }
   }
 </script>
@@ -205,8 +279,19 @@
         z-index: 1;
     }
 
+    .sketch {
+      position: relative;
+        overflow: hidden;
+    }
+
     .sketch img {
         border: 1px dashed #000;
+    }
+
+    #cropper {
+      position: absolute;
+      top: 0;
+      left: 0;
     }
 
     .sidebar {
@@ -226,6 +311,16 @@
     .footer {
         padding: 15px 15px 0 15px;
         text-align: right;
+    }
+
+    .moveable {
+        font-family: "Roboto", sans-serif;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 200px;
+        height: 200px;
+        z-index: 10000;
     }
 
     @media (max-width: 767px) {

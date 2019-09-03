@@ -98,11 +98,11 @@ const pluginsData = {
 
 const settings = {
   plugins: {
-    removeDoctype: { active: true },
-    removeXMLProcInst: { active: true },
+    // removeDoctype: { active: true },
+    // removeXMLProcInst: { active: true },
     removeComments: { active: true },
     removeMetadata: { active: true },
-    removeXMLNS: { active: true },
+    // removeXMLNS: { active: true },
     removeEditorsNSData: { active: true },
     cleanupAttrs: { active: true },
     inlineStyles: { active: true },
