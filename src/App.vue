@@ -46,15 +46,22 @@
         <!-- Page Content -->
         <div class="paper">
             <div class="sketch">
-                <div ref="cropper" id="cropper"></div>
-                <Moveable
-                        class="moveable"
-                        v-bind="moveable"
-                        @drag="handleDrag"
-                        @resize="handleResize"
-                        @rotate="handleRotate"
-                >
-                </Moveable>
+                <div ref="cropper" id="cropper">
+                    <Moveable
+                            class="moveable"
+                            v-bind="moveable"
+                            @drag="handleDrag"
+                            @resize="handleResize"
+                            @rotate="handleRotate"
+                    >
+                    <svg width="306" height="306">
+
+                        <rect x="0" y="0" width="200" height="200" fill="none" stroke="#000"></rect>
+                    </svg>
+                    </Moveable>
+
+
+                </div>
                 <img v-if="source.svg" :src="source.svg" alt="Source SVG File Preview">
             </div>
         </div>
@@ -90,7 +97,7 @@
     mounted() {
       bsCustomFileInput.init()
       const cropperEl = document.getElementById('cropper')
-      this.cropper.svg.element = SVG(cropperEl)
+      // this.cropper.svg.element = SVG(cropperEl)
       // draw.rect(100, 100).move(100, 50).fill('#f06')
       // let draw = SVG(canvas).size(150, 200)
     },
@@ -185,8 +192,8 @@
         let fileResult = await actions.process()
         const iterationCallback = async function () {}
 
-        this.cropper.svg.width = fileResult.dimensions.width
-        this.cropper.svg.height= fileResult.dimensions.height
+        //this.cropper.svg.width = fileResult.dimensions.width
+        //this.cropper.svg.height= fileResult.dimensions.height
 
         let resultFile = {
           text: fileResult.data,
@@ -208,7 +215,7 @@
         reader.onload = async (e) => {
           this.source.optimized = await this.multipass(e.target.result)
           this.source.svg = this.stringToImage(this.source.optimized.text)
-          this.cropper.svg.element.clear().size(this.source.optimized.width, this.source.optimized.height)
+          //this.cropper.svg.element.clear().size(this.source.optimized.width, this.source.optimized.height)
         };
         reader.readAsText(file);
       },
@@ -225,7 +232,7 @@
       handleResize({
                      target, width, height, delta,
                    }) {
-        console.log('onResize', width, height);
+        console.log('onResize', width, height, target);
         delta[0] && (target.style.width = `${width}px`);
         delta[1] && (target.style.height = `${height}px`);
         this.cropper.width = width;
