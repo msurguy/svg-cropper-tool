@@ -20,24 +20,31 @@
                         </div>
                     </div>
 
-                  <div v-if="source.svg">
-                    <toggle label="Closed Path" v-model="source.closedPath"></toggle>
+                    <div v-if="source.svg">
+                        <toggle label="Closed Path" v-model="source.closedPath"></toggle>
+                        <p class="mt-3 lead text-center text-white"> Cropper </p>
+                        <toggle label="Clean Path" v-model="cropper.clean"></toggle>
+                        <slider v-if="cropper.clean" :min="0.1" :max="2" :step="0.1" label="Clean Amount"
+                                v-model.number="cropper.cleanAmount"></slider>
 
-                    <p class="mt-3 lead text-center text-white"> Cropper </p>
-                    <select-field label="Cropper type" v-model="cropper.type"
-                                  :options="cropper.options"></select-field>
+                        <toggle label="Simplify Path" v-model="cropper.simplify"></toggle>
 
-                    <toggle v-if="cropper.type === 'file' || cropper.type === 'custom'" label="Closed Path" v-model="cropper.closedPath"></toggle>
-                    <button @click="crop" class="btn btn-block btn-secondary">Crop</button>
+                        <select-field label="Cropper type" v-model="cropper.type"
+                                      :options="cropper.options"></select-field>
 
-                  </div>
+                        <toggle v-if="cropper.type === 'file' || cropper.type === 'custom'" label="Closed Path"
+                                v-model="cropper.closedPath"></toggle>
+                        <slider :min="10" :max="200" label="Quality" v-model.number="cropper.scale"></slider>
+                        <button @click="crop" class="btn btn-block btn-secondary">Crop</button>
+
+                    </div>
 
                 </div>
             </div>
 
             <div class="button">
                 <div class="reveal"></div>
-                <button class="btn btn-primary btn-block" @click.prevent="download">
+                <button class="btn btn-primary btn-block" @click.prevent="downloadSVG">
                     Download SVG
                 </button>
             </div>
@@ -45,18 +52,19 @@
 
         <!-- Page Content -->
         <div class="paper">
-            <div class="sketch">
+            <div id="sketch" class="sketch">
                 <div ref="cropper" id="cropper"></div>
-                <Moveable
-                        class="moveable"
-                        v-bind="moveable"
-                        @drag="handleDrag"
-                        @resize="handleResize"
-                        @rotate="handleRotate"
+                <Moveable v-if="moveable.set"
+                          class="moveable"
+                          v-bind="moveable"
+                          @drag="handleDrag"
+                          @resize="handleResize"
                 >
                 </Moveable>
-                <img v-if="source.svg" :src="source.svg" alt="Source SVG File Preview">
+                <img v-if="source.svg" :src="source.svg" :width="cropper.svg.width" :height="cropper.svg.height"
+                     alt="Source SVG File Preview">
             </div>
+            <div ref="croppedSVG" id="croppedSVG"></div>
         </div>
         <div class="footer-wrapper">
             <div class="footer">
@@ -73,40 +81,71 @@
   /* eslint-disable no-console */
   import bsCustomFileInput from 'bs-custom-file-input'
 
-  import {eventBus} from '@/main'
+  // import {eventBus} from '@/main'
   import Toggle from "@/components/Toggle";
   import SelectField from "@/components/SelectField";
-  import actions from '@/svgo'
+  import Slider from "@/components/Slider";
   import * as SVG from 'svg.js'
   import Moveable from 'vue-moveable';
+  import * as ClipperLib from 'clipper-lib'
+  import {flattenSVG} from 'flatten-svg';
+  import actions from '@/svgo'
+
+  function paths2string(paths, scale, closed) {
+    let svgpath = "", i, j;
+    if (!scale) scale = 1;
+    for (i = 0; i < paths.length; i++) {
+      for (j = 0; j < paths[i].length; j++) {
+        if (!j) svgpath += "M";
+        else svgpath += "L";
+        svgpath += (paths[i][j].X / scale) + ", " + (paths[i][j].Y / scale);
+      }
+      if (closed) svgpath += "Z";
+    }
+    if (svgpath === "") svgpath = "M0,0";
+    return svgpath;
+  }
+
 
   export default {
     name: 'App',
     components: {
       Toggle,
       SelectField,
+      Slider,
       Moveable
     },
     mounted() {
       bsCustomFileInput.init()
       const cropperEl = document.getElementById('cropper')
       this.cropper.svg.element = SVG(cropperEl)
-      // draw.rect(100, 100).move(100, 50).fill('#f06')
-      // let draw = SVG(canvas).size(150, 200)
+      this.moveable = {
+        draggable: true,
+        throttleDrag: 0,
+        resizable: true,
+        throttleResize: 1,
+        keepRatio: false,
+        scalable: false,
+        throttleScale: 0,
+        rotatable: false,
+        throttleRotate: 0,
+        origin: true,
+        pinchable: false,
+        container: document.getElementById('sketch')
+      }
+    },
+    created: function () {
+      window.addEventListener('keydown', this.onKeyDown)
+      window.addEventListener('keyup', this.onKeyUp)
+    },
+    beforeDestroy: function () {
+      window.removeEventListener('keydown', this.onKeyDown)
+      window.removeEventListener('keyup', this.onKeyUp)
     },
     data() {
       return {
         moveable: {
-          draggable: true,
-          throttleDrag: 0,
-          resizable: true,
-          throttleResize: 1,
-          keepRatio: false,
-          scalable: false,
-          throttleScale: 0,
-          rotatable: true,
-          throttleRotate: 0,
-          pinchable: false // ["draggable", "resizable", "scalable", "rotatable"]
+          set: false
         },
         source: {
           svg: null,
@@ -119,34 +158,35 @@
           position: [0, 0]
         },
         cropper: {
+          scale: 100,
           x: 0,
           y: 0,
           width: 200,
           height: 200,
-          closedPath: false,
-          type: 'square',
+          closedPath: true,
+          clean: false,
+          cleanAmount: 1.1,
+          simplify: false,
+          type: 'rectangle',
           options: [
-            {text: 'Square', value: 'square'},
             {text: 'Rectangle', value: 'rectangle'},
-            {text: 'Circle', value: 'circle'},
+            {text: 'Circle / Ellipse', value: 'circle'},
             {text: 'Polygon', value: 'polygon'},
             {text: 'Custom Shape', value: 'custom'},
             {text: 'SVG File', value: 'file'}
           ],
-          square: {
-            size: [200, 200],
-          },
           rectangle: {
-            size: [100, 200],
+            el: null,
           },
-          circle: {
-            size: [200],
+          ellipse: {
+            el: null,
           },
           polygon: {
-            size: [200],
+            el: null,
             sides: 5,
           },
           custom: {
+            el: null,
             points: []
           },
           svg: {
@@ -156,22 +196,45 @@
             width: 0,
             height: 0
           }
-        },
-        cropperOptions: {
-          square: [0, 0],
-          circle: [0, 3, 4, 5]
-        },
-        result: {
-          svg: ''
         }
       }
     },
     methods: {
-      download() {
-        eventBus.$emit('download')
+      onKeyDown(e) {
+        if (e.key === 'Shift') {
+          this.moveable.keepRatio = true
+        }
       },
+      onKeyUp(e) {
+        if (e.key === 'Shift') {
+          this.moveable.keepRatio = false
+        }
+      },
+      downloadSVG() {
+        const svgDoctype = '<?xml version="1.0" standalone="no"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">'
+
+        // serialize our SVG XML to a string.
+        let svgString = (new XMLSerializer()).serializeToString(this.$refs.croppedSVG.firstChild)
+
+        // reduce the SVG path by cutting off floating point values after the first digit beyond floating point (~50% less MBs)
+        svgString = svgString.replace(/([+]?\d+\.\d{3,}([eE][+]?\d+)?)/g, (x) => (+x).toFixed(3))
+        // remove Vue's data IDs
+        svgString = svgString.replace(/ data-v-([0-9a-z]){8}=""/g, () => '')
+
+        const blob = new Blob([svgDoctype + svgString], {type: 'image/svg+xml;charset=utf-8'})
+
+        /* This portion of script saves the file to local filesystem as a download */
+        let svgUrl = URL.createObjectURL(blob)
+
+        const downloadLink = document.createElement('a')
+        downloadLink.href = svgUrl
+        downloadLink.download = 'cropped-' + Date.now() + '.svg'
+        document.body.appendChild(downloadLink)
+        downloadLink.click()
+        document.body.removeChild(downloadLink)
+      },
+
       onFileChange(e) {
-        // this.cropper.svg.width =
         this.source.optimized = {}
         this.source.svg = null
 
@@ -184,9 +247,7 @@
         await actions.load({data: svg})
         let fileResult = await actions.process()
         const iterationCallback = async function () {}
-
-        this.cropper.svg.width = fileResult.dimensions.width
-        this.cropper.svg.height= fileResult.dimensions.height
+        this.moveable.set = true
 
         let resultFile = {
           text: fileResult.data,
@@ -200,7 +261,7 @@
         }
         return resultFile;
       },
-      stringToImage (string) {
+      stringToImage(string) {
         return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(string)
       },
       createImage(file) {
@@ -209,31 +270,88 @@
           this.source.optimized = await this.multipass(e.target.result)
           this.source.svg = this.stringToImage(this.source.optimized.text)
           this.cropper.svg.element.clear().size(this.source.optimized.width, this.source.optimized.height)
+          this.cropper.rectangle.el = this.cropper.svg.element.rect().attr({
+            fill: 'none',
+            stroke: '#f06',
+            'stroke-width': '3px'
+          })
+          this.cropper.rectangle.el.move(0, -1)
+          this.cropper.rectangle.el.size(200, 200)
         };
         reader.readAsText(file);
       },
-      crop () {
+      crop() {
+        const parser = new DOMParser();
+        const sourceElement = parser.parseFromString(this.source.optimized.text, "image/svg+xml");
+        const flattenedSource = flattenSVG(sourceElement.documentElement)
+        const flattenedCropper = flattenSVG(this.cropper.svg.element.node)
 
+        let croppedPaths = ''
+
+        flattenedSource.forEach((path) => {
+          let combinedShape = []
+          let newpath = []
+          path.points.forEach((shape) => {
+            newpath.push({X: shape[0], Y: shape[1]})
+          })
+
+          combinedShape.push(newpath)
+
+          let cuttingShape = []
+          let cuttingPath = []
+          flattenedCropper[0].points.forEach((shape) => {
+            cuttingPath.push({X: shape[0], Y: shape[1]})
+          })
+
+          cuttingShape.push(cuttingPath)
+
+          const subj_paths = combinedShape;
+          const clip_paths = cuttingShape; //[[{"X": 10, "Y": 0}, {"X":200, "Y": 0}, {"X": 200, "Y": 200}, {"X":10, "Y": 200}]];
+
+          const cpr = new ClipperLib.Clipper();
+
+          ClipperLib.JS.ScaleUpPaths(subj_paths, this.cropper.scale);
+          ClipperLib.JS.ScaleUpPaths(clip_paths, this.cropper.scale);
+
+          cpr.AddPaths(subj_paths, ClipperLib.PolyType.ptSubject, this.source.closedPath);
+          cpr.AddPaths(clip_paths, ClipperLib.PolyType.ptClip, this.cropper.closedPath);
+
+          const solution_polytree = new ClipperLib.PolyTree();
+          const succeeded = cpr.Execute(ClipperLib.ClipType.ctIntersection, solution_polytree, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+          let solution_paths = ClipperLib.Clipper.PolyTreeToPaths(solution_polytree);
+          if (this.cropper.clean) {
+            //solution_paths = ClipperLib.Clipper.CleanPolygons(solution_paths, this.cropper.cleanAmount);
+            solution_paths = ClipperLib.JS.Clean(solution_paths, this.cropper.cleanAmount);
+          }
+
+          if (this.cropper.simplify) {
+            solution_paths = ClipperLib.Clipper.SimplifyPolygons(solution_paths);
+          }
+
+          croppedPaths += '<path stroke="black" fill="none" stroke-width="1" d="' + paths2string(solution_paths, this.cropper.scale, this.source.closedPath) + '"/>'
+        })
+
+        let svg = `<svg style="background-color:#FFF" width="${this.source.optimized.width}" height="${this.source.optimized.height}">`;
+        svg += croppedPaths;
+        svg += '</svg>';
+        this.$refs.croppedSVG.innerHTML = svg;
       },
-      handleDrag({target, left, top }) {
-        console.log('onDrag left, top', left, top)
+      handleDrag({target, left, top}) {
         target.style.left = `${left}px`;
         target.style.top = `${top}px`;
         this.cropper.x = left;
         this.cropper.y = top;
+        this.cropper.rectangle.el.move(left, top)
       },
       handleResize({
                      target, width, height, delta,
                    }) {
-        console.log('onResize', width, height);
         delta[0] && (target.style.width = `${width}px`);
         delta[1] && (target.style.height = `${height}px`);
         this.cropper.width = width;
         this.cropper.height = height;
-      },
-      handleRotate({ target, dist, transform}) {
-        console.log('onRotate', dist);
-        target.style.transform = transform;
+        this.cropper.rectangle.el.move(parseInt(target.style.left.replace('px', '')), parseInt(target.style.top.replace('px', '')))
+        this.cropper.rectangle.el.size(width, height)
       }
     }
   }
@@ -280,7 +398,7 @@
     }
 
     .sketch {
-      position: relative;
+        position: relative;
         overflow: hidden;
     }
 
@@ -289,9 +407,13 @@
     }
 
     #cropper {
-      position: absolute;
-      top: 0;
-      left: 0;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+
+    #croppedSVG {
+        padding-top: 10px;
     }
 
     .sidebar {
