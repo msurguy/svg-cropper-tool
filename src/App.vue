@@ -26,12 +26,14 @@
                         <toggle label="Clean Path" v-model="cropper.clean"></toggle>
                         <slider v-if="cropper.clean" :min="0.1" :max="2" :step="0.1" label="Clean Amount"
                                 v-model.number="cropper.cleanAmount"></slider>
-
+                        <toggle label="Lighten Path" v-model="cropper.lighten"></toggle>
+                        <slider v-if="cropper.lighten" :min="0.1" :max="2" :step="0.1" label="Lighten Amount"
+                                v-model.number="cropper.lightenAmount"></slider>
                         <toggle label="Simplify Path" v-model="cropper.simplify"></toggle>
-
+                        <slider v-if="cropper.simplify" :min="0.1" :max="2" :step="0.1" label="Simplify Amount"
+                                v-model.number="cropper.simplifyAmount"></slider>
                         <select-field label="Cropper type" v-model="cropper.type"
                                       :options="cropper.options"></select-field>
-
                         <toggle v-if="cropper.type === 'file' || cropper.type === 'custom'" label="Closed Path"
                                 v-model="cropper.closedPath"></toggle>
                         <slider :min="10" :max="200" label="Quality" v-model.number="cropper.scale"></slider>
@@ -54,14 +56,14 @@
         <div class="paper">
             <div id="sketch" class="sketch">
                 <div ref="cropper" id="cropper"></div>
-                <Moveable v-if="moveable.set"
+                <Moveable v-if="cropper.set"
                           class="moveable"
                           v-bind="moveable"
                           @drag="handleDrag"
                           @resize="handleResize"
                 >
                 </Moveable>
-                <img v-if="source.svg" :src="source.svg" :width="cropper.svg.width" :height="cropper.svg.height"
+                <img v-if="source.svg" :src="source.svg" :width="source.optimized.width" :height="source.optimized.height"
                      alt="Source SVG File Preview">
             </div>
             <div ref="croppedSVG" id="croppedSVG"></div>
@@ -106,7 +108,6 @@
     return svgpath;
   }
 
-
   export default {
     name: 'App',
     components: {
@@ -144,9 +145,7 @@
     },
     data() {
       return {
-        moveable: {
-          set: false
-        },
+        moveable: {},
         source: {
           svg: null,
           optimized: {
@@ -158,6 +157,7 @@
           position: [0, 0]
         },
         cropper: {
+          set: false,
           scale: 100,
           x: 0,
           y: 0,
@@ -247,8 +247,6 @@
         await actions.load({data: svg})
         let fileResult = await actions.process()
         const iterationCallback = async function () {}
-        this.moveable.set = true
-
         let resultFile = {
           text: fileResult.data,
           width: fileResult.dimensions.width,
@@ -277,6 +275,7 @@
           })
           this.cropper.rectangle.el.move(0, -1)
           this.cropper.rectangle.el.size(200, 200)
+          this.cropper.set = true
         };
         reader.readAsText(file);
       },
