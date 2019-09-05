@@ -44,7 +44,7 @@
 
             <div class="button">
                 <div class="reveal"></div>
-                <button class="btn btn-primary btn-block" @click.prevent="downloadSVG">
+                <button class="btn btn-primary btn-block" @click.prevent="download">
                     Download SVG
                 </button>
             </div>
@@ -85,26 +85,12 @@
   import Toggle from "@/components/Toggle";
   import SelectField from "@/components/SelectField";
   import Slider from "@/components/Slider";
-  import * as SVG from 'svg.js'
+  import {downloadSVG, pointsToPath, stringToInlineSVG} from "@/lib/utils";
   import Moveable from 'vue-moveable';
+  import * as SVG from 'svg.js'
   import * as ClipperLib from 'clipper-lib'
   import {flattenSVG} from 'flatten-svg';
-  import actions from '@/svgo'
-
-  function paths2string(paths, scale, closed) {
-    let svgpath = "", i, j;
-    if (!scale) scale = 1;
-    for (i = 0; i < paths.length; i++) {
-      for (j = 0; j < paths[i].length; j++) {
-        if (!j) svgpath += "M";
-        else svgpath += "L";
-        svgpath += (paths[i][j].X / scale) + ", " + (paths[i][j].Y / scale);
-      }
-      if (closed) svgpath += "Z";
-    }
-    if (svgpath === "") svgpath = "M0,0";
-    return svgpath;
-  }
+  import {multipassOptimize} from '@/lib/optimizer'
 
   export default {
     name: 'App',
@@ -210,30 +196,9 @@
           this.moveable.keepRatio = false
         }
       },
-      downloadSVG() {
-        const svgDoctype = '<?xml version="1.0" standalone="no"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">'
-
-        // serialize our SVG XML to a string.
-        let svgString = (new XMLSerializer()).serializeToString(this.$refs.croppedSVG.firstChild)
-
-        // reduce the SVG path by cutting off floating point values after the first digit beyond floating point (~50% less MBs)
-        svgString = svgString.replace(/([+]?\d+\.\d{3,}([eE][+]?\d+)?)/g, (x) => (+x).toFixed(3))
-        // remove Vue's data IDs
-        svgString = svgString.replace(/ data-v-([0-9a-z]){8}=""/g, () => '')
-
-        const blob = new Blob([svgDoctype + svgString], {type: 'image/svg+xml;charset=utf-8'})
-
-        /* This portion of script saves the file to local filesystem as a download */
-        let svgUrl = URL.createObjectURL(blob)
-
-        const downloadLink = document.createElement('a')
-        downloadLink.href = svgUrl
-        downloadLink.download = 'cropped-' + Date.now() + '.svg'
-        document.body.appendChild(downloadLink)
-        downloadLink.click()
-        document.body.removeChild(downloadLink)
+      download () {
+        downloadSVG(this.$refs.croppedSVG.firstChild)
       },
-
       onFileChange(e) {
         this.source.optimized = {}
         this.source.svg = null
@@ -241,32 +206,15 @@
         let files = e.target.files || e.dataTransfer.files;
         if (!files.length)
           return;
-        this.createImage(files[0]);
+        this.readImage(files[0]);
       },
-      async multipass(svg) {
-        await actions.load({data: svg})
-        let fileResult = await actions.process()
-        const iterationCallback = async function () {}
-        let resultFile = {
-          text: fileResult.data,
-          width: fileResult.dimensions.width,
-          height: fileResult.dimensions.height
-        }
-        // eslint-disable-next-line no-cond-assign
-        while (fileResult = await actions.nextPass()) {
-          resultFile = {text: fileResult.data, width: fileResult.dimensions.width, height: fileResult.dimensions.height}
-          await iterationCallback(resultFile);
-        }
-        return resultFile;
-      },
-      stringToImage(string) {
-        return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(string)
-      },
-      createImage(file) {
+      readImage(file) {
         const reader = new FileReader();
         reader.onload = async (e) => {
-          this.source.optimized = await this.multipass(e.target.result)
-          this.source.svg = this.stringToImage(this.source.optimized.text)
+          this.source.optimized = await multipassOptimize(e.target.result)
+          // TODO: convert width and height to pixels?
+          this.source.svg = stringToInlineSVG(this.source.optimized.text)
+          // TODO: loop over the cropper elements and set dimensions to the same as the original
           this.cropper.svg.element.clear().size(this.source.optimized.width, this.source.optimized.height)
           this.cropper.rectangle.el = this.cropper.svg.element.rect().attr({
             fill: 'none',
@@ -275,6 +223,7 @@
           })
           this.cropper.rectangle.el.move(0, -1)
           this.cropper.rectangle.el.size(200, 200)
+
           this.cropper.set = true
         };
         reader.readAsText(file);
@@ -316,7 +265,8 @@
           cpr.AddPaths(clip_paths, ClipperLib.PolyType.ptClip, this.cropper.closedPath);
 
           const solution_polytree = new ClipperLib.PolyTree();
-          const succeeded = cpr.Execute(ClipperLib.ClipType.ctIntersection, solution_polytree, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+          // TODO: handle errors if clipping is unsuccessful
+          cpr.Execute(ClipperLib.ClipType.ctIntersection, solution_polytree, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
           let solution_paths = ClipperLib.Clipper.PolyTreeToPaths(solution_polytree);
           if (this.cropper.clean) {
             //solution_paths = ClipperLib.Clipper.CleanPolygons(solution_paths, this.cropper.cleanAmount);
@@ -330,16 +280,7 @@
           if (this.cropper.lighten) {
             solution_paths = ClipperLib.JS.Lighten(solution_paths, this.cropper.lightenAmount * this.cropper.scale);
           }
-            let patharray = []
-          for (let i = 0; i < solution_paths.length; i++) {
-            for (let j = 0; j < solution_paths[i].length; j++) {
-              patharray.push({X : (solution_paths[i][j].X / this.cropper.scale), Y: (solution_paths[i][j].Y / this.cropper.scale)})
-            }
-          }
-
-          console.log(JSON.stringify(patharray))
-
-          croppedPaths += '<path stroke="black" fill="none" stroke-width="1" d="' + paths2string(solution_paths, this.cropper.scale, this.source.closedPath) + '"/>'
+          croppedPaths += '<path stroke="black" fill="none" stroke-width="1" d="' + pointsToPath(solution_paths, this.cropper.scale, this.source.closedPath) + '"/>'
         })
 
         let svg = `<svg style="background-color:#FFF" width="${this.source.optimized.width}" height="${this.source.optimized.height}">`;
