@@ -30,13 +30,11 @@
                         <slider v-if="cropper.lighten" :min="0.1" :max="2" :step="0.1" label="Lighten Amount"
                                 v-model.number="cropper.lightenAmount"></slider>
                         <toggle label="Simplify Path" v-model="cropper.simplify"></toggle>
-                        <slider v-if="cropper.simplify" :min="0.1" :max="2" :step="0.1" label="Simplify Amount"
-                                v-model.number="cropper.simplifyAmount"></slider>
                         <select-field label="Cropper type" v-model="cropper.type"
                                       :options="cropper.options"></select-field>
                         <toggle v-if="cropper.type === 'file' || cropper.type === 'custom'" label="Closed Path"
                                 v-model="cropper.closedPath"></toggle>
-                        <slider :min="10" :max="200" label="Quality" v-model.number="cropper.scale"></slider>
+                        <slider :min="30" :max="1000" label="Quality" v-model.number="cropper.scale"></slider>
                         <button @click="crop" class="btn btn-block btn-secondary">Crop</button>
 
                     </div>
@@ -165,8 +163,10 @@
           height: 200,
           closedPath: true,
           clean: false,
-          cleanAmount: 1.1,
+          cleanAmount: 0.1,
           simplify: false,
+          lighten: false,
+          lightenAmount: 0.1,
           type: 'rectangle',
           options: [
             {text: 'Rectangle', value: 'rectangle'},
@@ -320,12 +320,24 @@
           let solution_paths = ClipperLib.Clipper.PolyTreeToPaths(solution_polytree);
           if (this.cropper.clean) {
             //solution_paths = ClipperLib.Clipper.CleanPolygons(solution_paths, this.cropper.cleanAmount);
-            solution_paths = ClipperLib.JS.Clean(solution_paths, this.cropper.cleanAmount);
+            solution_paths = ClipperLib.JS.Clean(solution_paths, this.cropper.cleanAmount * this.cropper.scale);
           }
 
           if (this.cropper.simplify) {
             solution_paths = ClipperLib.Clipper.SimplifyPolygons(solution_paths);
           }
+
+          if (this.cropper.lighten) {
+            solution_paths = ClipperLib.JS.Lighten(solution_paths, this.cropper.lightenAmount * this.cropper.scale);
+          }
+            let patharray = []
+          for (let i = 0; i < solution_paths.length; i++) {
+            for (let j = 0; j < solution_paths[i].length; j++) {
+              patharray.push({X : (solution_paths[i][j].X / this.cropper.scale), Y: (solution_paths[i][j].Y / this.cropper.scale)})
+            }
+          }
+
+          console.log(JSON.stringify(patharray))
 
           croppedPaths += '<path stroke="black" fill="none" stroke-width="1" d="' + paths2string(solution_paths, this.cropper.scale, this.source.closedPath) + '"/>'
         })
