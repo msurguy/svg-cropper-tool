@@ -8,7 +8,7 @@ export function pointsToPath(points, scale = 1, closed = false) {
     }
     if (closed) svgpath += 'Z';
   }
-  // if (svgpath === "") svgpath = "M0,0";
+  if (svgpath === "") svgpath = "M0,0";
   return svgpath;
 }
 

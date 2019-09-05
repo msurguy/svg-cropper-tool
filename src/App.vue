@@ -199,9 +199,13 @@
       download () {
         downloadSVG(this.$refs.croppedSVG.firstChild)
       },
-      onFileChange(e) {
+      resetCropper () {
         this.source.optimized = {}
         this.source.svg = null
+        // TODO: reset other parameters here
+      },
+      onFileChange(e) {
+        this.resetCropper()
 
         let files = e.target.files || e.dataTransfer.files;
         if (!files.length)
@@ -210,6 +214,7 @@
       },
       readImage(file) {
         const reader = new FileReader();
+        // TODO: get the file name here and save it to be used for later (for download)
         reader.onload = async (e) => {
           this.source.optimized = await multipassOptimize(e.target.result)
           // TODO: convert width and height to pixels?
@@ -280,13 +285,14 @@
           if (this.cropper.lighten) {
             solution_paths = ClipperLib.JS.Lighten(solution_paths, this.cropper.lightenAmount * this.cropper.scale);
           }
-          croppedPaths += '<path stroke="black" fill="none" stroke-width="1" d="' + pointsToPath(solution_paths, this.cropper.scale, this.source.closedPath) + '"/>'
+
+          if (solution_paths.length) {
+            // TODO: preserve original path width and colors?
+            croppedPaths += '<path stroke="black" fill="none" stroke-width="1" d="' + pointsToPath(solution_paths, this.cropper.scale, this.source.closedPath) + '"/>'
+          }
         })
 
-        let svg = `<svg style="background-color:#FFF" width="${this.source.optimized.width}" height="${this.source.optimized.height}">`;
-        svg += croppedPaths;
-        svg += '</svg>';
-        this.$refs.croppedSVG.innerHTML = svg;
+        this.$refs.croppedSVG.innerHTML = `<svg style="background-color:#FFF" width="${this.source.optimized.width}" height="${this.source.optimized.height}">${croppedPaths}</svg>`
       },
       handleDrag({target, left, top}) {
         target.style.left = `${left}px`;
