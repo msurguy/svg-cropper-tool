@@ -28,6 +28,16 @@
                         <div v-if="source.svg">
                             <toggle label="Closed Path" v-model="source.closedPath"></toggle>
                             <p class="mt-3 lead text-center text-white"> Cropper </p>
+<!--                            <toggle v-if="cropper.type === 'file' || cropper.type === 'custom'" label="Closed Path"-->
+<!--                                    v-model="cropper.closedPath"></toggle>-->
+                            <select-field label="Cropper type" v-model="cropper.type"
+                                          :options="cropper.options"></select-field>
+                            <simple-button v-if="cropper.type === 'custom'" @click="clearCustomCropper">Clear Shape</simple-button>
+                            <slider v-if="cropper.type === 'polygon'" :min="3" :max="10" :step="1" label="Sides"
+                                    v-model.number="cropper.polygon.sides"></slider>
+                            <slider v-if="cropper.type === 'polygon'" :min="0" :max="360" :step="1" label="Angle"
+                                    v-model.number="cropper.polygon.startingAngle"></slider>
+                            <slider :min="30" :max="1000" label="Quality" v-model.number="cropper.scale"></slider>
                             <toggle label="Clean Path" v-model="cropper.clean"></toggle>
                             <slider v-if="cropper.clean" :min="0.1" :max="2" :step="0.1" label="Clean Amount"
                                     v-model.number="cropper.cleanAmount"></slider>
@@ -35,15 +45,6 @@
                             <slider v-if="cropper.lighten" :min="0.1" :max="2" :step="0.1" label="Lighten Amount"
                                     v-model.number="cropper.lightenAmount"></slider>
                             <toggle label="Simplify Path" v-model="cropper.simplify"></toggle>
-                            <select-field label="Cropper type" v-model="cropper.type"
-                                          :options="cropper.options"></select-field>
-                            <slider v-if="cropper.type === 'polygon'" :min="3" :max="10" :step="1" label="Sides"
-                                    v-model.number="cropper.polygon.sides"></slider>
-                            <slider v-if="cropper.type === 'polygon'" :min="0" :max="360" :step="1" label="Angle"
-                                    v-model.number="cropper.polygon.startingAngle"></slider>
-                            <toggle v-if="cropper.type === 'file' || cropper.type === 'custom'" label="Closed Path"
-                                    v-model="cropper.closedPath"></toggle>
-                            <slider :min="30" :max="1000" label="Quality" v-model.number="cropper.scale"></slider>
                             <button @click="crop" :disabled="cropper.loading" class="btn btn-block btn-secondary">Crop</button>
 
                         </div>
@@ -63,7 +64,7 @@
         <!-- Page Content -->
         <div class="paper">
             <div id="sketch" class="sketch">
-                <div ref="cropper" id="cropper"></div>
+                <div ref="cropper" id="cropper" @click="cropperClicked"></div>
                 <Moveable v-if="cropper.set"
                           ref="moveable"
                           class="moveable-frame"
@@ -96,6 +97,7 @@
   import Toggle from "@/components/Toggle";
   import SelectField from "@/components/SelectField";
   import Slider from "@/components/Slider";
+  import SimpleButton from "@/components/SimpleButton";
   import {downloadSVG, pointsToPath, stringToInlineSVG} from "@/lib/utils";
   import Moveable from 'vue-moveable';
   import * as SVG from 'svg.js'
@@ -129,10 +131,20 @@
       Toggle,
       SelectField,
       Slider,
+      SimpleButton,
       Moveable
     },
     watch: {
-      'cropper.type' (type) {
+      'cropper.type' (type, previousType) {
+        if (type === 'custom' && previousType !== 'custom') {
+          this.cropper.set = false
+        }
+
+        if (previousType === 'custom' && type !== 'custom') {
+          this.positionCropper()
+          this.cropper.set = true
+        }
+
         this.switchCropperShape(type)
       },
       'cropper.polygon.sides' () {
@@ -140,6 +152,9 @@
       },
       'cropper.polygon.startingAngle'() {
         this.switchCropperShape(this.cropper.type)
+      },
+      'cropper.custom.points' (points) {
+        this.cropper.custom.el.plot(points)
       }
     },
     mounted() {
@@ -231,6 +246,13 @@
       }
     },
     methods: {
+      cropperClicked (e) {
+        if (this.cropper.type === 'custom') {
+          const x = e.offsetX
+          const y = e.offsetY
+          this.cropper.custom.points.push([x, y])
+        }
+      },
       switchCropperShape (type) {
         this.cropper.svg.element.clear()
         let points
@@ -251,7 +273,14 @@
             this.cropper.polygon.el.size(this.cropper.width, this.cropper.height)
             this.cropper.polygon.el.center(this.cropper.x + this.cropper.width / 2, this.cropper.y + this.cropper.height / 2)
             break
+          case 'custom':
+            this.cropper.custom.el = this.cropper.svg.element.polygon().attr(CROPPER_PATH_STYLE)
+            break
         }
+      },
+      clearCustomCropper () {
+        this.cropper.custom.points = []
+        //this.cropper.svg.element.clear()
       },
       moveCropperShape (x, y) {
         this.cropper[this.cropper.type].el.center(x, y)
@@ -277,6 +306,12 @@
         this.source.svg = null
         // TODO: reset other parameters here
       },
+      positionCropper() {
+        this.cropper.x = 0;
+        this.cropper.y = -1;
+        this.cropper.width = this.source.optimized.width > 200 ? 200 : this.source.optimized.width
+        this.cropper.height = this.source.optimized.height > 200 ? 200 : this.source.optimized.height
+      },
       onFileChange(e) {
         this.source.loading = true
         this.resetCropper()
@@ -297,10 +332,7 @@
           // TODO: loop over the cropper elements and set dimensions to the same as the original
           this.cropper.svg.element.clear().size(this.source.optimized.width, this.source.optimized.height)
 
-          this.cropper.x = 0;
-          this.cropper.y = -1;
-          this.cropper.width = this.source.optimized.width > 200 ? 200 : this.source.optimized.width
-          this.cropper.height = this.source.optimized.height > 200 ? 200 : this.source.optimized.height
+          this.positionCropper()
           this.cropper.set = true
 
           this.switchCropperShape(this.cropper.type)
