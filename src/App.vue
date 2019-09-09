@@ -154,7 +154,9 @@
         this.switchCropperShape(this.cropper.type)
       },
       'cropper.custom.points' (points) {
-        this.cropper.custom.el.plot(points)
+        if (this.cropper.custom.el) {
+          this.cropper.custom.el.plot(points)
+        }
       }
     },
     mounted() {
@@ -280,7 +282,6 @@
       },
       clearCustomCropper () {
         this.cropper.custom.points = []
-        //this.cropper.svg.element.clear()
       },
       moveCropperShape (x, y) {
         this.cropper[this.cropper.type].el.center(x, y)
@@ -305,6 +306,7 @@
         this.source.optimized = {}
         this.source.svg = null
         // TODO: reset other parameters here
+        this.clearCustomCropper()
       },
       positionCropper() {
         this.cropper.x = 0;
