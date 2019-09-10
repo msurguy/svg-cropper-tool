@@ -14,7 +14,7 @@
                             <div></div>
                         </div>
                         <div class="custom-file">
-                            <input @change="onFileChange" type="file" accept="image/svg+xml" class="custom-file-input"
+                            <input @change="onSourceFileChange" type="file" accept="image/svg+xml" class="custom-file-input"
                                    id="sourcefile">
                             <label class="custom-file-label" for="sourcefile">Choose file</label>
                         </div>
@@ -24,6 +24,7 @@
                         <div class="progress-bar" role="progressbar"
                              aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" style="width: 100%">Loading SVG</div>
                     </div>
+
                     <transition name="slide">
                         <div v-if="source.svg">
                             <toggle label="Closed Path" v-model="source.closedPath"></toggle>
@@ -32,7 +33,15 @@
 <!--                                    v-model="cropper.closedPath"></toggle>-->
                             <select-field label="Cropper type" v-model="cropper.type"
                                           :options="cropper.options"></select-field>
-                            <simple-button v-if="cropper.type === 'custom'" @click="clearCustomCropper">Clear Shape</simple-button>
+                            <button-group v-if="cropper.type === 'custom'" @onLeftClick="clearCustomCropper" @onRightClick="saveCustomCropper"></button-group>
+                            <div v-if="cropper.type === 'file'" class="sidebar-control">
+                                <div class="custom-file">
+                                    <input @change="onCropperFileChange" type="file" accept="image/svg+xml"
+                                           class="custom-file-input"
+                                           id="cropperFile">
+                                    <label class="custom-file-label" for="cropperFile">Choose file</label>
+                                </div>
+                            </div>
                             <slider v-if="cropper.type === 'polygon'" :min="3" :max="10" :step="1" label="Sides"
                                     v-model.number="cropper.polygon.sides"></slider>
                             <slider v-if="cropper.type === 'polygon'" :min="0" :max="360" :step="1" label="Angle"
@@ -65,6 +74,7 @@
         <div class="paper">
             <div id="sketch" class="sketch">
                 <div ref="cropper" id="cropper" @click="cropperClicked"></div>
+                <div ref="fileCropper" id="file-cropper"></div>
                 <Moveable v-if="cropper.set"
                           ref="moveable"
                           class="moveable-frame"
@@ -97,7 +107,7 @@
   import Toggle from "@/components/Toggle";
   import SelectField from "@/components/SelectField";
   import Slider from "@/components/Slider";
-  import SimpleButton from "@/components/SimpleButton";
+  import ButtonGroup from "@/components/ButtonGroup";
   import {downloadSVG, pointsToPath, stringToInlineSVG} from "@/lib/utils";
   import Moveable from 'vue-moveable';
   import * as SVG from 'svg.js'
@@ -131,16 +141,16 @@
       Toggle,
       SelectField,
       Slider,
-      SimpleButton,
+      ButtonGroup,
       Moveable
     },
     watch: {
       'cropper.type' (type, previousType) {
-        if (type === 'custom' && previousType !== 'custom') {
+        if ((type === 'custom' || type === 'file') && (previousType !== 'custom' || previousType !== 'file')) {
           this.cropper.set = false
         }
 
-        if (previousType === 'custom' && type !== 'custom') {
+        if ((previousType === 'custom' || previousType === 'file') && (type !== 'custom' || type !== 'file')) {
           this.positionCropper()
           this.cropper.set = true
         }
@@ -163,6 +173,7 @@
       bsCustomFileInput.init()
       const cropperEl = document.getElementById('cropper')
       this.cropper.svg.element = SVG(cropperEl)
+      this.cropper.file.el = document.getElementById('file-cropper')
       this.moveable = {
         draggable: true,
         throttleDrag: 0,
@@ -237,10 +248,11 @@
             el: null,
             points: []
           },
+          file: {
+            el: null
+          },
           svg: {
             element: null,
-            text: '',
-            file: null,
             width: 0,
             height: 0
           }
@@ -282,6 +294,11 @@
       },
       clearCustomCropper () {
         this.cropper.custom.points = []
+        // switch to the SVG.js element
+      },
+      saveCustomCropper () {
+        if (!this.cropper.custom.points.length) return
+        downloadSVG(this.cropper.svg.element.node, `cropper-shape-${Date.now()}`)
       },
       moveCropperShape (x, y) {
         this.cropper[this.cropper.type].el.center(x, y)
@@ -300,7 +317,7 @@
         }
       },
       download () {
-        downloadSVG(this.$refs.croppedSVG.firstChild)
+        downloadSVG(this.$refs.croppedSVG.firstChild, `cropped-${Date.now()}`)
       },
       resetCropper () {
         this.source.optimized = {}
@@ -314,16 +331,32 @@
         this.cropper.width = this.source.optimized.width > 200 ? 200 : this.source.optimized.width
         this.cropper.height = this.source.optimized.height > 200 ? 200 : this.source.optimized.height
       },
-      onFileChange(e) {
+      onCropperFileChange(e) {
+        this.cropper.loading = true
+        let files = e.target.files || e.dataTransfer.files;
+        if (!files.length)
+          return;
+        this.readCropperImage(files[0]);
+      },
+      readCropperImage(file) {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const optimizedCropperImage = await multipassOptimize(e.target.result)
+          this.cropper.file.el.innerHTML = optimizedCropperImage.text
+          this.cropper.loading = false
+        };
+        reader.readAsText(file);
+      },
+      onSourceFileChange(e) {
         this.source.loading = true
         this.resetCropper()
 
         let files = e.target.files || e.dataTransfer.files;
         if (!files.length)
           return;
-        this.readImage(files[0]);
+        this.readSourceImage(files[0]);
       },
-      readImage(file) {
+      readSourceImage(file) {
         this.cropper.set = false
         const reader = new FileReader();
         // TODO: get the file name here and save it to be used for later (for download)
@@ -348,7 +381,7 @@
         const parser = new DOMParser();
         const sourceElement = parser.parseFromString(this.source.optimized.text, "image/svg+xml");
         const flattenedSource = flattenSVG(sourceElement.documentElement)
-        const flattenedCropper = flattenSVG(this.cropper.svg.element.node)
+        const flattenedCropper = this.cropper.type === 'file' ? flattenSVG(this.cropper.file.el.children[0]) : flattenSVG(this.cropper.svg.element.node)
 
         let croppedPaths = ''
 
@@ -479,6 +512,12 @@
     }
 
     #cropper {
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+
+    #file-cropper {
         position: absolute;
         top: 0;
         left: 0;

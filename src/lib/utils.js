@@ -12,7 +12,7 @@ export function pointsToPath(points, scale = 1, closed = false) {
   return svgpath;
 }
 
-export function downloadSVG(element) {
+export function downloadSVG(element, fileName) {
   const svgDoctype = '<?xml version="1.0" standalone="no"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">'
 
   // serialize our SVG XML to a string.
@@ -30,7 +30,7 @@ export function downloadSVG(element) {
 
   const downloadLink = document.createElement('a')
   downloadLink.href = svgUrl
-  downloadLink.download = 'cropped-' + Date.now() + '.svg'
+  downloadLink.download = `${fileName}.svg`
   document.body.appendChild(downloadLink)
   downloadLink.click()
   document.body.removeChild(downloadLink)
