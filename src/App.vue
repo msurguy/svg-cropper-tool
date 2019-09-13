@@ -83,7 +83,7 @@
                           @resize="handleResize"
                 >
                 </Moveable>
-                <img v-if="source.svg" :src="source.svg"
+                <img v-if="source.svg" :src="source.svg" :width="source.optimized.width" :height="source.optimized.height"
                      alt="Source SVG File Preview">
             </div>
             <div ref="croppedSVG" id="croppedSVG"></div>
@@ -189,6 +189,14 @@
         moveable: {},
         source: {
           originalSVG: '',
+          width: {
+            unit: 'px',
+            value: 0
+          },
+          height: {
+            unit: 'px',
+            value: 0
+          },
           name: '',
           loading: false,
           svg: null,
@@ -362,37 +370,59 @@
 
           const shouldTransform = ['m', 'mm', 'in', 'pt', 'pc', 'ft'].some(substring => originalWidthString.includes(substring))
 
+          let viewBoxDimensions = {
+            width: originalWidthString,
+            height: originalHeightString
+          }
+
           if (shouldTransform) {
-            /*
-            const originalDimensions = {
-              width: {
-                unit: originalWidthString.match(/[a-zA-Z]+/g)[0],
-                value: parseFloat(originalWidthString.slice(0, -(originalWidthString.match(/[a-zA-Z]+/g)[0].length)))
-              },
-              height: {
-                unit: originalHeightString.match(/[a-zA-Z]+/g)[0],
-                value: parseFloat(originalHeightString.slice(0, -(originalHeightString.match(/[a-zA-Z]+/g)[0].length)))
-              },
+            const viewBox = this.source.originalSVG.getAttribute('viewBox')
+
+            // if viewbox exists, retrieve dimensions from the two last values of the string
+            if (viewBox) {
+              const viewBoxArray = viewBox.split(' ')
+              viewBoxDimensions.width = parseFloat(viewBoxArray[2])
+              viewBoxDimensions.height = parseFloat(viewBoxArray[3])
             }
 
-            const transformedWidth = convertUnits(originalDimensions.width.value, originalDimensions.width.unit, 'px')
-            const transformedHeight = convertUnits(originalDimensions.height.value, originalDimensions.height.unit, 'px')
+            const widthUnit = originalWidthString.match(/[a-zA-Z]+/g)[0]
+            const heightUnit = originalHeightString.match(/[a-zA-Z]+/g)[0]
 
-            this.source.originalSVG.setAttribute('width', `${transformedWidth}px`)
-            this.source.originalSVG.setAttribute('height', `${transformedHeight}px`)
-*/
+            this.source.width.unit = widthUnit
+            this.source.height.unit = heightUnit
+
+            this.source.width.value = parseFloat(originalWidthString.slice(0, -(widthUnit.length)))
+            this.source.height.value = parseFloat(originalHeightString.slice(0, -(heightUnit.length)))
+
+            const transformedWidth = convertUnits(this.source.width.value, this.source.width.unit, 'px')
+            const transformedHeight = convertUnits(this.source.height.value, this.source.height.unit, 'px')
+
+            let totalWidth = transformedWidth
+            let totalHeight = transformedHeight
+
+            if (this.source.width.value < viewBoxDimensions.width) {
+              totalWidth = convertUnits(viewBoxDimensions.width, this.source.width.unit, 'px')
+            }
+
+            if (this.source.height.value < viewBoxDimensions.height) {
+              totalHeight = convertUnits(viewBoxDimensions.height, this.source.height.unit, 'px')
+            }
+
+            this.source.originalSVG.setAttribute('width', `${totalWidth}px`)
+            this.source.originalSVG.setAttribute('height', `${totalHeight}px`)
+
             // TODO : Wrap content inside SVG file into a group and then transform by the transform factor, while resizing with right position
             // g. transform: scale(1.2)
             // .createElementNS("http://www.w3.org/2000/svg","g");
 
            // const svgContents = this.source.originalSVG.innerHTML
-           // this.source.originalSVG.innerHTML = `<g transform="scale(${transformedWidth / originalDimensions.width.value})">${this.source.originalSVG.innerHTML}</g>`
+            this.source.originalSVG.innerHTML = `<g transform="scale(${transformedWidth / this.source.width.value} ${transformedHeight / this.source.height.value})">${this.source.originalSVG.innerHTML}</g>`
             //const group = document.createElementNS("http://www.w3.org/2000/svg", "g")
             //this.source.originalSVG.parentNode.insertBefore(group, this.source.originalSVG)
            // group.appendChild(this.source.originalSVG)
           }
 
-          //this.source.originalSVG.removeAttribute('viewBox')
+          this.source.originalSVG.removeAttribute('viewBox')
 
           // if width and height are set in pixels, skip the following transformation steps
           // set width and height to pixels
