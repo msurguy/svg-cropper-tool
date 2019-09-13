@@ -359,17 +359,32 @@
         reader.onload = async (e) => {
           // Set file name
           this.source.name = file.name.substr(0, file.name.lastIndexOf('.'))
-          // convertUnits(180, 'mm', 'px')
-          // this.$refs.originalSvg.innerHTML = e.target.result
-          // TODO discard of the originalSVG after doc is loaded and transformed
 
-          // TODO: remove all strings and text before <SVG tag begins...
-          this.source.originalSVG = new DOMParser().parseFromString(e.target.result, "image/svg+xml").documentElement
-          const originalWidthString = this.source.originalSVG.getAttribute('width')
-          const originalHeightString = this.source.originalSVG.getAttribute('height')
+          // try finding "<svg" in the document:
+          let fileContents = e.target.result
 
-          const shouldTransform = ['m', 'mm', 'in', 'pt', 'pc', 'ft'].some(substring => originalWidthString.includes(substring))
+          let firstOccurenceOfSVG = fileContents.indexOf('<svg ')
 
+          if (firstOccurenceOfSVG === -1) {
+            firstOccurenceOfSVG = fileContents.indexOf('<SVG ')
+          }
+
+          // Remove everything that occurs prior to SVG opening tag
+          fileContents = fileContents.substring(firstOccurenceOfSVG)
+
+          this.source.originalSVG = new DOMParser().parseFromString(fileContents, "image/svg+xml").documentElement
+          let originalWidthString
+          let originalHeightString
+          let shouldTransform = false
+          try {
+            originalWidthString = this.source.originalSVG.getAttribute('width')
+            originalHeightString = this.source.originalSVG.getAttribute('height')
+            shouldTransform = ['m', 'mm', 'in', 'pt', 'pc', 'ft'].some(substring => originalWidthString.includes(substring))
+          } catch (e) {
+            alert('Cannot retrieve size parameters')
+            throw Error('Cannot retrieve size parameters')
+          }
+          
           let viewBoxDimensions = {
             width: originalWidthString,
             height: originalHeightString
@@ -411,29 +426,18 @@
             this.source.originalSVG.setAttribute('width', `${totalWidth}px`)
             this.source.originalSVG.setAttribute('height', `${totalHeight}px`)
 
-            // TODO : Wrap content inside SVG file into a group and then transform by the transform factor, while resizing with right position
-            // g. transform: scale(1.2)
-            // .createElementNS("http://www.w3.org/2000/svg","g");
-
-           // const svgContents = this.source.originalSVG.innerHTML
+            // Wrap the SVG contents into a group and scale that whole group
             this.source.originalSVG.innerHTML = `<g transform="scale(${transformedWidth / this.source.width.value} ${transformedHeight / this.source.height.value})">${this.source.originalSVG.innerHTML}</g>`
-            //const group = document.createElementNS("http://www.w3.org/2000/svg", "g")
-            //this.source.originalSVG.parentNode.insertBefore(group, this.source.originalSVG)
-           // group.appendChild(this.source.originalSVG)
           }
 
+          // Get rid of the viewBox since we don't need it anymore, and it's wrong anyway
           this.source.originalSVG.removeAttribute('viewBox')
 
-          // if width and height are set in pixels, skip the following transformation steps
-          // set width and height to pixels
-          // convert to pixels
-          // wrap the SVG doc into group with a global transform on it
-          // console.log(originalHeight)
-          console.log(this.source.originalSVG.outerHTML)
-
+          // Optimize the SVG via SVGO
+          // TODO do this in the web worker like SVGOMG
           this.source.optimized = await multipassOptimize(this.source.originalSVG.outerHTML)
           this.source.svg = stringToInlineSVG(this.source.optimized.text)
-          // TODO: loop over the cropper elements and set dimensions to the same as the original
+          // TODO? loop over the cropper elements and set dimensions to the same as the optimized original
           this.cropper.svg.element.clear().size(this.source.optimized.width, this.source.optimized.height)
 
           this.positionCropper()
@@ -573,7 +577,7 @@
 
     .sketch {
         position: relative;
-        overflow: hidden;
+        overflow: auto;
     }
 
     .sketch img {
