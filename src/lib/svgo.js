@@ -226,8 +226,10 @@ function getDimensions(parsedSvg) {
 
   if (svgEl.hasAttr('width') && svgEl.hasAttr('height')) {
     return {
-      width: parseFloat(svgEl.attr('width').value),
-      height: parseFloat(svgEl.attr('height').value)
+      width: svgEl.attr('width').value,
+      height: svgEl.attr('height').value
+      // width: parseFloat(svgEl.attr('width').value),
+      // height: parseFloat(svgEl.attr('height').value)
     };
   }
 
@@ -235,8 +237,10 @@ function getDimensions(parsedSvg) {
     const viewBox = svgEl.attr('viewBox').value.split(/(?:,\s*|\s+)/);
 
     return {
-      width: parseFloat(viewBox[2]),
-      height: parseFloat(viewBox[3])
+      // width: parseFloat(viewBox[2]),
+      // height: parseFloat(viewBox[3])
+      width: viewBox[2],
+      height: viewBox[3]
     };
   }
 
