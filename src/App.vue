@@ -92,7 +92,7 @@
             <div class="footer">
                 <h1>SVG Cropper</h1>
                 <p>Project by <a target="_blank" href="http://twitter.com/msurguy">@msurguy</a> (<a target="_blank"
-                                                                                                    href="http://github.com/msurguy/svg-cropper">Source</a>)
+                                                                                                    href="http://github.com/msurguy/svg-cropper-tool">Source</a>)
                 </p>
             </div>
         </div>
