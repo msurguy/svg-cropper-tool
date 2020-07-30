@@ -108,32 +108,19 @@
   import SelectField from "@/components/SelectField";
   import Slider from "@/components/Slider";
   import ButtonGroup from "@/components/ButtonGroup";
-  import {downloadSVG, pointsToPath, stringToInlineSVG} from "@/lib/utils";
-  import Moveable from 'vue-moveable';
+  import {downloadSVG, pointsToPath, stringToInlineSVG, createPolygon} from "@/lib/utils";
+  import Moveable from '@/components/Moveable';
   import * as SVG from 'svg.js'
   import * as ClipperLib from 'clipper-lib'
   import {flattenSVG} from 'flatten-svg';
   import {multipassOptimize} from '@/lib/optimizer'
+  import convertUnits from '@/lib/unitConverter'
 
   const CROPPER_PATH_STYLE = {
     fill: 'none',
     stroke: '#f06',
     'stroke-width': '3px'
   }
-
-  function createPolygon(x, y, numOfSides, radius, minAngle) {
-    let points = ''
-    let xo
-    let yo
-    for (let i = 0; i < numOfSides; i++) {
-      let t = (Math.PI*2 / numOfSides * i) + minAngle * (Math.PI / 180)
-      xo = x + radius * Math.sin(t)
-      yo = y + radius * Math.cos(t)
-      points += xo + ',' + yo + ' '
-    }
-    return points
-  }
-
 
   export default {
     name: 'App',
@@ -201,6 +188,16 @@
       return {
         moveable: {},
         source: {
+          originalSVG: '',
+          width: {
+            unit: 'px',
+            value: 0
+          },
+          height: {
+            unit: 'px',
+            value: 0
+          },
+          name: '',
           loading: false,
           svg: null,
           optimized: {
@@ -317,7 +314,7 @@
         }
       },
       download () {
-        downloadSVG(this.$refs.croppedSVG.firstChild, `cropped-${Date.now()}`)
+        downloadSVG(this.$refs.croppedSVG.firstChild, `cropped-${this.source.name}-${Date.now()}`)
       },
       resetCropper () {
         this.source.optimized = {}
@@ -359,12 +356,88 @@
       readSourceImage(file) {
         this.cropper.set = false
         const reader = new FileReader();
-        // TODO: get the file name here and save it to be used for later (for download)
         reader.onload = async (e) => {
-          this.source.optimized = await multipassOptimize(e.target.result)
-          // TODO: convert width and height to pixels?
+          // Set file name
+          this.source.name = file.name.substr(0, file.name.lastIndexOf('.'))
+
+          // try finding "<svg" in the document:
+          let fileContents = e.target.result
+
+          let firstOccurenceOfSVG = fileContents.indexOf('<svg ')
+
+          if (firstOccurenceOfSVG === -1) {
+            firstOccurenceOfSVG = fileContents.indexOf('<SVG ')
+          }
+
+          // Remove everything that occurs prior to SVG opening tag
+          fileContents = fileContents.substring(firstOccurenceOfSVG)
+
+          this.source.originalSVG = new DOMParser().parseFromString(fileContents, "image/svg+xml").documentElement
+          let originalWidthString
+          let originalHeightString
+          let shouldTransform = false
+          try {
+            originalWidthString = this.source.originalSVG.getAttribute('width')
+            originalHeightString = this.source.originalSVG.getAttribute('height')
+            shouldTransform = ['m', 'mm', 'in', 'pt', 'pc', 'ft'].some(substring => originalWidthString.includes(substring))
+          } catch (e) {
+            alert('Cannot retrieve size parameters')
+            throw Error('Cannot retrieve size parameters')
+          }
+          
+          let viewBoxDimensions = {
+            width: originalWidthString,
+            height: originalHeightString
+          }
+
+          if (shouldTransform) {
+            const viewBox = this.source.originalSVG.getAttribute('viewBox')
+
+            // if viewbox exists, retrieve dimensions from the two last values of the string
+            if (viewBox) {
+              const viewBoxArray = viewBox.split(' ')
+              viewBoxDimensions.width = parseFloat(viewBoxArray[2])
+              viewBoxDimensions.height = parseFloat(viewBoxArray[3])
+            }
+
+            const widthUnit = originalWidthString.match(/[a-zA-Z]+/g)[0]
+            const heightUnit = originalHeightString.match(/[a-zA-Z]+/g)[0]
+
+            this.source.width.unit = widthUnit
+            this.source.height.unit = heightUnit
+
+            this.source.width.value = parseFloat(originalWidthString.slice(0, -(widthUnit.length)))
+            this.source.height.value = parseFloat(originalHeightString.slice(0, -(heightUnit.length)))
+
+            const transformedWidth = convertUnits(this.source.width.value, this.source.width.unit, 'px')
+            const transformedHeight = convertUnits(this.source.height.value, this.source.height.unit, 'px')
+
+            let totalWidth = transformedWidth
+            let totalHeight = transformedHeight
+
+            if (this.source.width.value < viewBoxDimensions.width) {
+              totalWidth = convertUnits(viewBoxDimensions.width, this.source.width.unit, 'px')
+            }
+
+            if (this.source.height.value < viewBoxDimensions.height) {
+              totalHeight = convertUnits(viewBoxDimensions.height, this.source.height.unit, 'px')
+            }
+
+            this.source.originalSVG.setAttribute('width', `${totalWidth}px`)
+            this.source.originalSVG.setAttribute('height', `${totalHeight}px`)
+
+            // Wrap the SVG contents into a group and scale that whole group
+            this.source.originalSVG.innerHTML = `<g transform="scale(${transformedWidth / this.source.width.value} ${transformedHeight / this.source.height.value})">${this.source.originalSVG.innerHTML}</g>`
+          }
+
+          // Get rid of the viewBox since we don't need it anymore, and it's wrong anyway
+          this.source.originalSVG.removeAttribute('viewBox')
+
+          // Optimize the SVG via SVGO
+          // TODO do this in the web worker like SVGOMG
+          this.source.optimized = await multipassOptimize(this.source.originalSVG.outerHTML)
           this.source.svg = stringToInlineSVG(this.source.optimized.text)
-          // TODO: loop over the cropper elements and set dimensions to the same as the original
+          // TODO? loop over the cropper elements and set dimensions to the same as the optimized original
           this.cropper.svg.element.clear().size(this.source.optimized.width, this.source.optimized.height)
 
           this.positionCropper()
@@ -504,7 +577,7 @@
 
     .sketch {
         position: relative;
-        overflow: hidden;
+        overflow: auto;
     }
 
     .sketch img {
@@ -525,6 +598,10 @@
 
     #croppedSVG {
         padding-top: 10px;
+    }
+
+    #original-svg {
+        display: none;
     }
 
     .sidebar {
