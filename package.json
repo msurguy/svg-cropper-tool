@@ -11,25 +11,24 @@
   "dependencies": {
     "bs-custom-file-input": "^1.3.4",
     "clipper-lib": "^6.4.2",
-    "core-js": "^2.6.11",
-    "flatten-svg": "^0.2.1",
-    "moveable": "^0.8.0",
-    "scenejs": "^1.1.4",
+    "core-js": "^3.8.3",
+    "flatten-svg": "^0.3.0",
+    "moveable": "^0.51.1",
     "svg.js": "^2.7.1",
-    "svgo": "^1.3.2",
-    "vue": "^2.6.11",
+    "svgo": "^3.0.2",
+    "vue": "^2.7.0",
     "vue-svgicon": "^3.2.8"
   },
   "devDependencies": {
-    "@vue/cli-plugin-babel": "^3.12.1",
-    "@vue/cli-plugin-eslint": "^3.12.1",
-    "@vue/cli-service": "^3.12.1",
-    "babel-eslint": "^10.1.0",
-    "eslint": "^5.16.0",
-    "eslint-plugin-vue": "^5.0.0",
-    "node-sass": "^4.14.1",
-    "sass-loader": "^7.3.1",
-    "vue-template-compiler": "^2.6.11"
+    "@babel/core": "^7.12.16",
+    "@babel/eslint-parser": "^7.12.16",
+    "@vue/cli-plugin-babel": "~5.0.8",
+    "@vue/cli-plugin-eslint": "~5.0.8",
+    "@vue/cli-service": "~5.0.8",
+    "eslint": "^7.32.0",
+    "eslint-plugin-vue": "^8.0.3",
+    "node-sass": "^9.0.0",
+    "sass-loader": "^13.3.2"
   },
   "eslintConfig": {
     "root": true,
@@ -40,9 +39,11 @@
       "plugin:vue/essential",
       "eslint:recommended"
     ],
-    "rules": {},
+    "rules": {
+      "vue/multi-word-component-names": "off"
+    },
     "parserOptions": {
-      "parser": "babel-eslint"
+      "parser": "@babel/eslint-parser"
     }
   },
   "postcss": {
