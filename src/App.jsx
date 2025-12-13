@@ -1,11 +1,11 @@
 /* eslint-disable no-console */
 import { useState, useEffect, useRef } from 'react';
 import bsCustomFileInput from 'bs-custom-file-input';
+import Moveable from 'react-moveable';
 import Toggle from './components/Toggle';
 import SelectField from './components/SelectField';
 import Slider from './components/Slider';
 import ButtonGroup from './components/ButtonGroup';
-import Moveable from './components/Moveable';
 import { downloadSVG, pointsToPath, stringToInlineSVG, createPolygon } from './lib/utils';
 import * as SVG from 'svg.js';
 import * as ClipperLib from 'clipper-lib';
@@ -26,6 +26,7 @@ export default function App() {
   const fileCropperRef = useRef(null);
   const croppedSVGRef = useRef(null);
   const moveableRef = useRef(null);
+  const targetRef = useRef(null);
 
   const [source, setSource] = useState({
     originalSVG: '',
@@ -487,16 +488,18 @@ export default function App() {
     setCropper((prev) => ({ ...prev, loading: false }));
   };
 
-  const handleDrag = ({ target, left, top }) => {
+  const handleDrag = ({ target, left, top, transform }) => {
     target.style.left = `${left}px`;
     target.style.top = `${top}px`;
+    target.style.transform = transform;
     setCropper((prev) => ({ ...prev, x: left, y: top }));
     moveCropperShape(left + cropper.width / 2, top + cropper.height / 2);
   };
 
-  const handleResize = ({ target, width, height, delta }) => {
+  const handleResize = ({ target, width, height, delta, drag }) => {
     delta[0] && (target.style.width = `${width}px`);
     delta[1] && (target.style.height = `${height}px`);
+    target.style.transform = drag.transform;
     setCropper((prev) => ({ ...prev, width, height }));
     moveCropperShape(
       parseInt(target.style.left.replace('px', '')) + width / 2,
@@ -687,13 +690,16 @@ export default function App() {
           <div ref={cropperRef} id="cropper" onClick={cropperClicked}></div>
           <div ref={fileCropperRef} id="file-cropper"></div>
           {cropper.set && (
-            <Moveable
-              ref={moveableRef}
-              className="moveable-frame"
-              {...moveable}
-              onDrag={handleDrag}
-              onResize={handleResize}
-            />
+            <>
+              <div ref={targetRef} className="moveable-frame"></div>
+              <Moveable
+                ref={moveableRef}
+                target={targetRef}
+                {...moveable}
+                onDrag={handleDrag}
+                onResize={handleResize}
+              />
+            </>
           )}
           {source.svg && (
             <img
