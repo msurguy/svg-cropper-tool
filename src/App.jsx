@@ -7,7 +7,7 @@ import SelectField from './components/SelectField';
 import Slider from './components/Slider';
 import ButtonGroup from './components/ButtonGroup';
 import { downloadSVG, pointsToPath, stringToInlineSVG, createPolygon } from './lib/utils';
-import * as SVG from 'svg.js';
+import SVG from 'svg.js';
 import * as ClipperLib from 'clipper-lib';
 import { flattenSVG } from 'flatten-svg';
 import { multipassOptimize } from './lib/optimizer';
